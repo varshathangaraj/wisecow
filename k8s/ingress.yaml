@@ -1,0 +1,29 @@
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: wisecow-ingress
+  namespace: wisecow
+  labels:
+    app: wisecow
+  annotations:
+    # Use cert-manager for automatic TLS certificate management
+    cert-manager.io/cluster-issuer: "letsencrypt-prod"
+    nginx.ingress.kubernetes.io/ssl-redirect: "true"
+    nginx.ingress.kubernetes.io/force-ssl-redirect: "true"
+spec:
+  ingressClassName: nginx
+  tls:
+    - hosts:
+        - wisecow.example.com   # Replace with your actual domain
+      secretName: wisecow-tls   # Created automatically by cert-manager
+  rules:
+    - host: wisecow.example.com  # Replace with your actual domain
+      http:
+        paths:
+          - path: /
+            pathType: Prefix
+            backend:
+              service:
+                name: wisecow-service
+                port:
+                  number: 80
