@@ -1,0 +1,176 @@
+# ─────────────────────────────────────────────────────────────────────────────
+# KubeArmor Zero-Trust Policy for Wisecow
+#
+# Principle: Default-deny everything, then explicitly allow only what the
+# Wisecow app legitimately needs to function.
+#
+# Apply with:
+#   kubectl apply -f kubearmor-policy.yaml
+#
+# Monitor violations with:
+#   karmor log --logfilter policy
+# ─────────────────────────────────────────────────────────────────────────────
+
+---
+apiVersion: security.kubearmor.com/v1
+kind: KubeArmorPolicy
+metadata:
+  name: wisecow-network-policy
+  namespace: wisecow
+spec:
+  selector:
+    matchLabels:
+      app: wisecow
+
+  # ── Network Rules ──────────────────────────────────────────────────────────
+  network:
+    matchProtocols:
+      # Allow only TCP (HTTP/HTTPS on port 4499 + outbound DNS)
+      - protocol: tcp
+        fromSource:
+          - path: /usr/bin/socat
+          - path: /bin/bash
+      - protocol: udp
+        fromSource:
+          - path: /bin/bash    # DNS resolution
+
+    action: Block   # Block any protocol not explicitly listed above
+
+---
+apiVersion: security.kubearmor.com/v1
+kind: KubeArmorPolicy
+metadata:
+  name: wisecow-file-policy
+  namespace: wisecow
+spec:
+  selector:
+    matchLabels:
+      app: wisecow
+
+  # ── File System Rules ──────────────────────────────────────────────────────
+  file:
+    matchDirectories:
+      # Allow read access to fortune data files
+      - dir: /usr/share/games/fortunes/
+        recursive: true
+        readOnly: true
+
+      # Allow read access to cowsay cow files
+      - dir: /usr/share/cowsay/
+        recursive: true
+        readOnly: true
+
+      # Allow read access to system libs and bins
+      - dir: /usr/lib/
+        recursive: true
+        readOnly: true
+      - dir: /lib/
+        recursive: true
+        readOnly: true
+
+      # Allow read of system config (socat, openssl, etc.)
+      - dir: /etc/
+        recursive: true
+        readOnly: true
+
+      # Application directory (read-only source)
+      - dir: /app/
+        recursive: true
+        readOnly: true
+
+    matchPaths:
+      # Deny writes to sensitive system paths
+      - path: /etc/passwd
+        action: Block
+      - path: /etc/shadow
+        action: Block
+      - path: /etc/sudoers
+        action: Block
+      - path: /root/
+        action: Block
+
+      # Deny access to host proc/sys from container
+      - path: /proc/sysrq-trigger
+        action: Block
+
+    action: Block   # Default: block any file access not listed above
+
+---
+apiVersion: security.kubearmor.com/v1
+kind: KubeArmorPolicy
+metadata:
+  name: wisecow-process-policy
+  namespace: wisecow
+spec:
+  selector:
+    matchLabels:
+      app: wisecow
+
+  # ── Process Execution Rules ────────────────────────────────────────────────
+  process:
+    matchPaths:
+      # Explicitly allow only the executables Wisecow needs
+      - path: /bin/bash
+      - path: /bin/sh
+      - path: /usr/bin/socat
+      - path: /usr/games/fortune
+      - path: /usr/games/cowsay
+      - path: /usr/bin/openssl
+      - path: /bin/nc
+      - path: /bin/cat
+      - path: /usr/bin/tr
+      - path: /usr/bin/cut
+
+      # BLOCK dangerous shell utilities
+      - path: /usr/bin/wget
+        action: Block
+      - path: /usr/bin/curl
+        action: Block
+      - path: /usr/bin/python3
+        action: Block
+      - path: /usr/bin/perl
+        action: Block
+      - path: /usr/bin/nc.openbsd
+        action: Block
+      - path: /usr/bin/nmap
+        action: Block
+      - path: /bin/su
+        action: Block
+      - path: /usr/bin/sudo
+        action: Block
+      - path: /usr/bin/passwd
+        action: Block
+
+    action: Block   # Block any executable not in the allow list
+
+---
+apiVersion: security.kubearmor.com/v1
+kind: KubeArmorPolicy
+metadata:
+  name: wisecow-syscall-policy
+  namespace: wisecow
+spec:
+  selector:
+    matchLabels:
+      app: wisecow
+
+  # ── Syscall Rules (Capabilities) ───────────────────────────────────────────
+  # Block dangerous capabilities that a web server never needs
+  capabilities:
+    matchCapabilities:
+      - capability: net_admin
+        action: Block
+      - capability: sys_admin
+        action: Block
+      - capability: sys_ptrace
+        action: Block
+      - capability: sys_rawio
+        action: Block
+      - capability: dac_override
+        action: Block
+      - capability: setuid
+        action: Block
+      - capability: setgid
+        action: Block
+
+  action: Block
