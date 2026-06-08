@@ -1,0 +1,99 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: wisecow-deployment
+  namespace: wisecow
+  labels:
+    app: wisecow
+    version: "1.0"
+    environment: production
+spec:
+  replicas: 2
+  selector:
+    matchLabels:
+      app: wisecow
+  strategy:
+    type: RollingUpdate
+    rollingUpdate:
+      maxSurge: 1
+      maxUnavailable: 0
+  template:
+    metadata:
+      labels:
+        app: wisecow
+        version: "1.0"
+    spec:
+      # Security context for the pod
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 1000
+        runAsGroup: 1000
+        fsGroup: 1000
+
+      containers:
+        - name: wisecow
+          # Replace with your registry image, e.g.:
+          # ghcr.io/<YOUR_GITHUB_USERNAME>/wisecow:latest
+          image: ghcr.io/YOUR_GITHUB_USERNAME/wisecow:latest
+          imagePullPolicy: Always
+
+          ports:
+            - name: http
+              containerPort: 4499
+              protocol: TCP
+
+          env:
+            - name: PORT
+              value: "4499"
+            # Uncomment below to enable TLS (cert/key from secret mounted at /app/tls)
+            # - name: TLS_CERT
+            #   value: "/app/tls/tls.crt"
+            # - name: TLS_KEY
+            #   value: "/app/tls/tls.key"
+
+          # Resource requests and limits
+          resources:
+            requests:
+              cpu: "50m"
+              memory: "64Mi"
+            limits:
+              cpu: "200m"
+              memory: "128Mi"
+
+          # Liveness probe
+          livenessProbe:
+            tcpSocket:
+              port: 4499
+            initialDelaySeconds: 15
+            periodSeconds: 20
+            failureThreshold: 3
+
+          # Readiness probe
+          readinessProbe:
+            tcpSocket:
+              port: 4499
+            initialDelaySeconds: 5
+            periodSeconds: 10
+            failureThreshold: 3
+
+          # Container security context
+          securityContext:
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: false
+            capabilities:
+              drop:
+                - ALL
+
+          # Optional: Mount TLS secret
+          # volumeMounts:
+          #   - name: tls-certs
+          #     mountPath: /app/tls
+          #     readOnly: true
+
+      # Optional: TLS volume from secret
+      # volumes:
+      #   - name: tls-certs
+      #     secret:
+      #       secretName: wisecow-tls
+
+      restartPolicy: Always
